@@ -69,5 +69,6 @@ public class Progress : IDisposable
     {
         _stop = true;
         _thread.Join();
+        GC.SuppressFinalize(this);
     }
 }
