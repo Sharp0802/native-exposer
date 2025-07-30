@@ -19,10 +19,7 @@ public class Progress : IDisposable
 
     public Progress()
     {
-        _thread = new Thread(Tick)
-        {
-            IsBackground = true
-        };
+        _thread = new Thread(Tick);
         _thread.Start();
     }
 
@@ -33,14 +30,11 @@ public class Progress : IDisposable
 
     private void Tick()
     {
-        while (!_stop)
+        while (!_stop || _logs.Count > 0)
         {
             var log = _logs.FirstOrDefault();
             if (log is null)
                 continue;
-
-            if (log.End is not null)
-                Console.Write('\n');
 
             var elapsed = (log.End ?? DateTime.Now) - log.Begin;
 
