@@ -5,6 +5,25 @@ namespace NativeExposer;
 
 public static class SymbolExtension
 {
+    public static IEnumerable<INamedTypeSymbol> GetAllType(this INamespaceOrTypeSymbol parent)
+    {
+        foreach (var child in parent.GetTypeMembers())
+            yield return child;
+        foreach (var child in parent.GetMembers().OfType<INamespaceSymbol>())
+        foreach (var grandChild in GetAllType(child)) 
+            yield return grandChild;
+    }
+
+    public static bool IsExported(this ISymbol symbol)
+    {
+        if (symbol is ITypeSymbol type && type.GetMembers().OfType<IMethodSymbol>().Any(IsExported))
+            return true;
+
+        return symbol
+            .GetAttributes()
+            .Any(attr => attr.AttributeClass?.GetFullName(".") == "NativeExposer.ExportAttribute");
+    }
+    
     public static string GetFullName(this ISymbol symbol, string delimiter)
     {
         var queue = new Stack<string>();
