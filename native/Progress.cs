@@ -65,6 +65,12 @@ public class Progress : IDisposable
         ((ProgressEntry)obj).End = DateTime.Now;
     }
 
+    public void Barrier()
+    {
+        foreach (var log in _logs) 
+            log.End ??= DateTime.Now;
+    }
+
     public void Dispose()
     {
         _stop = true;

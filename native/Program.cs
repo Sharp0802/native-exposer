@@ -103,6 +103,7 @@ public static class Program
         using var msbuild = MSBuildWorkspace.Create();
 
         var project = await LoadProject(msbuild, args.ProjectPath);
+        Progress.Instance.Barrier();
         if (project is null)
             return -1;
 
