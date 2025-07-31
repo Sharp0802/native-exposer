@@ -24,6 +24,7 @@
         <PackageVersion>1.0.0</PackageVersion>
         <Authors>Sharp0802</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
         <RepositoryUrl>https://github.com/sharp0802/native-exposer</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <Description>Managed-side stub generator for hosting C# from C++, without NativeAOT or IPC</Description>
@@ -32,6 +33,10 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
+    </ItemGroup>
+    
+    <ItemGroup>
+        <None Include="../README.md" Pack="true" PackagePath="/"/>
     </ItemGroup>
     
     <!-- Thank you https://www.meziantou.net/packaging-a-roslyn-analyzer-with-nuget-dependencies.htm -->
