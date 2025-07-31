@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #ifndef CLR_CALL
@@ -59,4 +60,5 @@ namespace clr {
 
   CLR_CALL CLR_WEAK StatusCode init(const uchar_t *dotnetRoot, const uchar_t *runtimeConfigPath);
   CLR_CALL CLR_WEAK StatusCode load(const uchar_t *assemblyPath);
+  CLR_CALL CLR_WEAK StatusCode close();
 }

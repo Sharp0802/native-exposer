@@ -90,6 +90,7 @@ namespace clr {
 namespace hostfxr {
   HOSTFXR_IMPORT(initialize_for_runtime_config);
   HOSTFXR_IMPORT(get_runtime_delegate);
+  HOSTFXR_IMPORT(close);
 }
 
 namespace clr {
@@ -176,6 +177,11 @@ clr::StatusCode clr::init(const uchar_t *dotnetRoot, const uchar_t *runtimeConfi
 clr::StatusCode clr::load(const uchar_t *assemblyPath) {
   int r = load_assembly(assemblyPath, nullptr, nullptr);
   return static_cast<StatusCode>(r);
+}
+
+clr::StatusCode clr::close()
+{
+  return static_cast<StatusCode>(hostfxr::close(global_hostfxr));
 }
 
 
