@@ -149,14 +149,24 @@ void clr::assert(StatusCode code)
 }
 
 clr::StatusCode clr::init(const uchar_t *dotnetRoot, const uchar_t *runtimeConfigPath) {
-  const ustring host_path = base_path(get_executable_path());
-  const ::hostfxr_initialize_parameters params{
-    .size = sizeof params,
-    .host_path = host_path.c_str(),
-    .dotnet_root = dotnetRoot
-  };
+  int r;
   
-  int r = hostfxr::initialize_for_runtime_config(runtimeConfigPath, &params, &global_hostfxr);
+  if (dotnetRoot)
+  {
+    const ustring host_path = base_path(get_executable_path());
+    const ::hostfxr_initialize_parameters params{
+      .size = sizeof params,
+      .host_path = host_path.c_str(),
+      .dotnet_root = dotnetRoot
+    };
+    
+    r = hostfxr::initialize_for_runtime_config(runtimeConfigPath, &params, &global_hostfxr);
+  }
+  else
+  {
+    r = hostfxr::initialize_for_runtime_config(runtimeConfigPath, nullptr, &global_hostfxr);
+  }
+  
   if (r) {
     return static_cast<StatusCode>(r);
   }
