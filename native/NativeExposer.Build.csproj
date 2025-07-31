@@ -11,7 +11,7 @@
 
     <PropertyGroup>
         <PackageId>NativeExposer.Build</PackageId>
-        <PackageVersion>1.1.0</PackageVersion>
+        <PackageVersion>1.2.0</PackageVersion>
         <Authors>Sharp0802</Authors>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageReadmeFile>README.md</PackageReadmeFile>
