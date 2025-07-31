@@ -10,7 +10,7 @@ public static class Program
     private static async Task<Project?> LoadProject(MSBuildWorkspace msbuild, string path)
     {
         object? eval = null, build = null, resolve = null;
-        
+
         var progress = new Progress<ProjectLoadProgress>();
         progress.ProgressChanged += (_, args) =>
         {
@@ -26,7 +26,7 @@ public static class Program
             if (target is null)
             {
                 var name = Path.GetFileNameWithoutExtension(args.FilePath);
-                
+
                 var verb = args.Operation switch
                 {
                     ProjectLoadOperation.Evaluate => "evaluate ",
@@ -34,7 +34,7 @@ public static class Program
                     ProjectLoadOperation.Resolve  => "resolve ",
                     _                             => throw new ArgumentOutOfRangeException()
                 };
-                
+
                 target = Progress.Instance.Begin(verb + name);
             }
             else
@@ -62,7 +62,24 @@ public static class Program
             .GetAllType()
             .Where(t => t.IsExported());
     }
-    
+
+    private static void WriteMethod(IMethodSymbol method, string? prefix, CodeWriter writer)
+    {
+        writer.Write(method.IsCtor()
+            ? $"{prefix}{method.ContainingType.Name}("
+            : $"{method.ReturnType.ToNativeType()} {prefix}{method.Name}(");
+
+        for (var i = 0; i < method.Parameters.Length; i++)
+        {
+            if (i > 0)
+                writer.Write(", ");
+            writer.Write($"{method.Parameters[i].Type.ToNativeType()} {method.Parameters[i].Name}");
+        }
+
+        writer.Write(")");
+    }
+
+
     private static async Task GenHeader(Compilation compilation, CodeWriter writer)
     {
         var boilerplate = await Resources.Embedded("lib.h");
@@ -75,13 +92,15 @@ public static class Program
                 writer.WriteLine($"namespace {type.ContainingNamespace.GetFullName("::")} {{");
                 writer.Indent++;
             }
-            
+
             writer.WriteLine(
                 $$"""
                   class {{type.Name}} {
                     ::std::intptr_t _handle;
-                  
+
                   public:
+                    {{type.Name}}(const {{type.Name}}&) = delete;
+                    {{type.Name}} &operator =(const {{type.Name}}&) = delete;
                     ~{{type.Name}}();
                   """);
             writer.Indent++;
@@ -91,22 +110,14 @@ public static class Program
                          .Where(m => m.IsExported())
                          .OfType<IMethodSymbol>())
             {
-                var ret = method.ReturnsVoid ? "void" : method.ReturnType.ToNativeType();
-                writer.Write($"CLR_CALL {ret} {method.Name}(");
-
-                for (var i = 0; i < method.Parameters.Length; i++)
-                {
-                    if (i > 0)
-                        writer.Write(", ");
-                    writer.Write($"{method.Parameters[i].Type.ToNativeType()} {method.Parameters[i].Name}");
-                }
-                
-                writer.WriteLine(");");
+                writer.Write("CLR_CALL ");
+                WriteMethod(method, null, writer);
+                writer.WriteLine(";");
             }
 
             writer.Indent--;
             writer.WriteLine("};");
-            
+
             if (!type.ContainingNamespace.IsGlobalNamespace)
             {
                 writer.Indent--;
@@ -114,25 +125,119 @@ public static class Program
             }
         }
     }
-    
+
+    private static void WriteMethodBody(IMethodSymbol method, CodeWriter writer, bool mangle = true)
+    {
+        writer.Write("thread_local ");
+        writer.Write(method.IsCtor()
+            ? method.ContainingType.ToNativeBridgeType()
+            : method.ReturnType.ToNativeBridgeType());
+
+        writer.Write(" (MANAGED_CALL *_fp)(");
+
+        if (!method.IsStatic && !method.IsCtor())
+        {
+            writer.Write("::std::intptr_t");
+            if (method.Parameters.Any())
+                writer.Write(", ");
+        }
+
+        for (var i = 0; i < method.Parameters.Length; i++)
+        {
+            if (i > 0)
+                writer.Write(", ");
+            writer.Write(method.Parameters[i].Type.ToNativeBridgeType());
+        }
+
+        writer.WriteLine(");");
+
+        var typeName   = method.ContainingType.GetFullyQualifiedName();
+        var methodName = mangle ? method.Mangle() : method.Name;
+
+        writer.WriteLine(
+            // synchronization is required with no thread-local
+            $$"""
+              if (!_fp) {
+                int r = ::clr::get_function_pointer("{{typeName}}", "{{methodName}}", UNMANAGEDCALLERSONLY_METHOD, nullptr, nullptr, reinterpret_cast<void**>(&_fp));
+                ::clr::assert_status_code(static_cast<clr::StatusCode>(r));
+              }
+              """);
+
+        if (!method.ReturnsVoid)
+            writer.Write("return ");
+        else if (method.IsCtor())
+            writer.Write("_handle = ");
+
+        writer.Write("_fp(");
+
+        if (!method.IsStatic && !method.IsCtor())
+        {
+            writer.Write("_handle");
+            if (method.Parameters.Any())
+                writer.Write(", ");
+        }
+
+        for (var i = 0; i < method.Parameters.Length; i++)
+        {
+            if (i > 0)
+                writer.Write(", ");
+            writer.Write(method.Parameters[i].Name);
+        }
+
+        writer.WriteLine(");");
+    }
+
     private static async Task GenSource(Compilation compilation, CodeWriter writer)
     {
-        var boilerplate = await Resources.Embedded("lib.h");
+        var boilerplate = await Resources.Embedded("lib.cxx");
         writer.WriteLine(boilerplate);
+
+        var internals = compilation
+            .Assembly
+            .GlobalNamespace
+            .GetAllType()
+            .Single(t => t.GetFullName(".") == "NativeExposer.Internal");
+        var free = internals
+            .GetMembers()
+            .OfType<IMethodSymbol>()
+            .Single(m => m.Name == "Free");
+
+        foreach (var type in GetExportTargets(compilation))
+        {
+            writer.WriteLine($"{type.GetFullName("::")}::~{type.Name}() {{");
+            writer.Indent++;
+            WriteMethodBody(free, writer, false);
+            writer.Indent--;
+            writer.WriteLine("}");
+
+            foreach (var method in type
+                         .GetMembers()
+                         .Where(m => m.IsExported())
+                         .OfType<IMethodSymbol>())
+            {
+                writer.Write("\n");
+                WriteMethod(method, method.ContainingSymbol.GetFullName("::") + "::", writer);
+                writer.WriteLine("{");
+                writer.Indent++;
+                WriteMethodBody(method, writer);
+                writer.Indent--;
+                writer.WriteLine("}");
+            }
+        }
     }
 
     private static string Encode(string str)
     {
         return new string(str.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray());
     }
-    
+
     private static async Task GenBuild(Compilation compilation, CodeWriter writer)
     {
         var assembly = compilation.ObjectType.ContainingAssembly;
-        var version = assembly.Identity.Version;
+        var version  = assembly.Identity.Version;
 
         var name = Encode(compilation.AssemblyName ?? "");
-        
+
         var boilerplate = await Resources.Embedded("CMakeLists.txt");
 
         boilerplate = boilerplate
@@ -143,7 +248,7 @@ public static class Program
         {
             if (line.StartsWith("##"))
                 continue;
-            
+
             writer.WriteLine(line);
         }
     }
@@ -155,7 +260,7 @@ public static class Program
         Progress.Instance.Dispose();
         return r;
     }
-    
+
     private static async Task<int> Start(string[] argv)
     {
         var args = Args.Parse(argv);
@@ -174,7 +279,7 @@ public static class Program
             Console.WriteLine("error: project doesn't support compilation");
             return -1;
         }
-        
+
         var compilation = await project.GetCompilationAsync().Watch("compile project");
 
         // compilation should fail only when project isn't compilable
@@ -187,7 +292,7 @@ public static class Program
                 continue;
             if (diagnostic.Severity == DiagnosticSeverity.Error)
                 error = true;
-            
+
             var diag = new DiagnosticFormatter().Format(diagnostic, CultureInfo.InvariantCulture);
             Console.WriteLine(diag);
         }
@@ -202,12 +307,12 @@ public static class Program
 
         await using var header = new StreamWriter(Path.Combine(args.OutputPath, "lib.h"));
         await using var source = new StreamWriter(Path.Combine(args.OutputPath, "lib.cxx"));
-        await using var build = new StreamWriter(Path.Combine(args.OutputPath, "CMakeLists.txt"));
+        await using var build  = new StreamWriter(Path.Combine(args.OutputPath, "CMakeLists.txt"));
 
         var headerCode = new CodeWriter(header);
         var sourceCode = new CodeWriter(source);
         var buildCode  = new CodeWriter(build);
-        
+
         await GenHeader(compilation, headerCode).Watch("generate header");
         await GenSource(compilation, sourceCode).Watch("generate source");
         await GenBuild(compilation, buildCode).Watch("generate CMakeLists.txt");
