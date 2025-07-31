@@ -10,9 +10,52 @@
         <AnalyzerLanguage>cs</AnalyzerLanguage>
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     </PropertyGroup>
+    
+    <PropertyGroup>
+        <AssemblyName>NativeExposer</AssemblyName>
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <NoPackageAnalysis>true</NoPackageAnalysis>
+        <DevelopmentDependency>true</DevelopmentDependency>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    </PropertyGroup>
+    
+    <PropertyGroup>
+        <PackageId>NativeExposer</PackageId>
+        <PackageVersion>1.0.0</PackageVersion>
+        <Authors>Sharp0802</Authors>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/sharp0802/native-exposer</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <Description>Managed-side stub generator for hosting C# from C++, without NativeAOT or IPC</Description>
+        <PackageTags>interoperability, interop, native, source-generator</PackageTags>
+    </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
     </ItemGroup>
+    
+    <!-- Thank you https://www.meziantou.net/packaging-a-roslyn-analyzer-with-nuget-dependencies.htm -->
+    <Target Name="AddNuGetDlls" BeforeTargets="_GetPackageFiles">
+        <!-- Merge the collection of PackageReference and Assemblies using the NuGetPackageId key.
+        This produces a new list containing the DLL path and the "IncludeInPackage" metadata-->
+        <JoinItems Left="@(ResolvedCompileFileDefinitions)" LeftKey="NuGetPackageId" LeftMetadata="*" Right="@(PackageReference)" RightKey="" RightMetadata="*" ItemSpecToUse="Left">
+            <Output TaskParameter="JoinResult" ItemName="_PackagesToPack" />
+        </JoinItems>
+
+        <ItemGroup>
+            <!-- Remove NETStandard DLLs -->
+            <_PackagesToPack Remove="@(_PackagesToPack)" Condition="%(NuGetPackageId) == 'NETStandard.Library' Or %(NuGetPackageId) == 'Microsoft.CodeAnalysis.CSharp' Or %(NuGetPackageId) == 'Microsoft.CodeAnalysis.CSharp.Workspaces'" />
+        </ItemGroup>
+
+        <Message Importance="High" Text="Adding DLLs from the following packages: @(_PackagesToPack->'%(NuGetPackageId)')" />
+
+        <ItemGroup>
+            <!-- Update the collection of items to pack with the DLLs from the NuGet packages -->
+            <None Include="@(_PackagesToPack)" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+
+            <!-- Add the DLL produced by the current project to the NuGet package -->
+            <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+        </ItemGroup>
+    </Target>
     
 </Project>
