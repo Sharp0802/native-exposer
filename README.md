@@ -24,8 +24,13 @@ class Program
 - C++
 
 ```cpp
+clr::assert(clr::init("<dotnet-root>", "<runtimeconfig.json>"));
+clr::assert(clr::load("<your-dll>"));
+
 Program program;
 program.Hello();
+
+clr::close();
 ```
 
 ## Getting Started
