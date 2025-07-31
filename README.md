@@ -59,3 +59,12 @@ It generates `CMakeLists.txt`, `lib.cxx` and `lib.h`.
 You can use this `CMakeLists.txt` from your CMake project as `add_subdirectory` or etc...
 
 4. Enjoy it!
+
+## Requirements
+
+- .NET 5 or above
+
+## Current Limitation
+
+- Cannot export properties
+- Broken when trimming or NativeAOT
