@@ -159,7 +159,7 @@ public static class Program
             $$"""
               if (!_fp) {
                 int r = ::clr::get_function_pointer("{{typeName}}", "{{methodName}}", UNMANAGEDCALLERSONLY_METHOD, nullptr, nullptr, reinterpret_cast<void**>(&_fp));
-                ::clr::assert_status_code(static_cast<clr::StatusCode>(r));
+                ::clr::assert(static_cast<clr::StatusCode>(r));
               }
               """);
 

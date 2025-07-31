@@ -138,7 +138,7 @@ static ustring base_path(const ustring& path)
 #endif
 }
 
-void clr::assert_status_code(StatusCode code)
+void clr::assert(StatusCode code)
 {
   if (code == 0)
     return;
