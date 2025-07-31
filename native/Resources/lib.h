@@ -57,6 +57,6 @@ namespace clr {
 
   CLR_CALL CLR_WEAK std::string to_string(StatusCode code);
 
-  CLR_CALL CLR_WEAK StatusCode init(const uchar_t *runtimeConfigPath);
+  CLR_CALL CLR_WEAK StatusCode init(const uchar_t *dotnetRoot, const uchar_t *runtimeConfigPath);
   CLR_CALL CLR_WEAK StatusCode load(const uchar_t *assemblyPath);
 }

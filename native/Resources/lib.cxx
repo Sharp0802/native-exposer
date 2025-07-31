@@ -1,15 +1,27 @@
 #include "lib.h"
 
+#include <exception>
+#include <filesystem>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <unordered_map>
 #include <utility>
 
 #include <coreclr_delegates.h>
 #include <hostfxr.h>
-#include <iostream>
-#include <string>
-#include <unordered_map>
+
+#if _WIN32
+#include <windows.h>
+#elif __APPLE__
+#include <mach-o/dyld.h>
+#else
+#include <unistd.h>
+#include <linux/limits.h>
+#endif
 
 #ifndef HOSTFXR_IMPORT
-#define HOSTFXR_IMPORT(name) extern "C" std::remove_pointer_t<hostfxr_##name##_fn> name __asm__("hostfxr_"#name)
+#define HOSTFXR_IMPORT(name) std::remove_pointer_t<hostfxr_##name##_fn> name __asm__("hostfxr_"#name)
 #endif
 
 namespace clr {
@@ -87,8 +99,63 @@ namespace clr {
 
 static hostfxr_handle global_hostfxr;
 
-clr::StatusCode clr::init(const uchar_t *runtimeConfigPath) {
-  int r = hostfxr::initialize_for_runtime_config(runtimeConfigPath, nullptr, &global_hostfxr);
+using ustring = std::basic_string<clr::uchar_t>;
+
+static ustring get_executable_path() {
+#ifdef _WIN32
+  clr::uchar_t buffer[MAX_PATH];
+  GetModuleFileNameW(NULL, buffer, MAX_PATH);
+  return buffer;
+#elif __APPLE__
+  clr::uchar_t buffer[8192];
+  uint32_t size = sizeof(buffer);
+  if (_NSGetExecutablePath(buffer, &size) == 0) {
+    return buffer;
+  }
+  
+  return "";
+#else // Linux and other POSIX-compliant systems
+  clr::uchar_t buffer[PATH_MAX];
+  ssize_t len = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+  if (len != -1) {
+    buffer[len] = '\0';
+    return buffer;
+  }
+  
+  return "";
+#endif
+}
+
+static ustring base_path(const ustring& path)
+{
+  std::filesystem::path f(path);
+  f = f.parent_path();
+#if _WIN32
+  return f.wstring();
+#else
+  return f.string();
+#endif
+}
+
+static void assert_status_code(clr::StatusCode code)
+{
+  if (code == 0)
+    return;
+
+  std::stringstream s;
+  s << "CLR error 0x" << std::hex << code << std::dec << ": " << clr::to_string(code) << std::endl;
+  throw std::runtime_error(s.str());
+}
+
+clr::StatusCode clr::init(const uchar_t *dotnetRoot, const uchar_t *runtimeConfigPath) {
+  const ustring host_path = base_path(get_executable_path());
+  const ::hostfxr_initialize_parameters params{
+    .size = sizeof params,
+    .host_path = host_path.c_str(),
+    .dotnet_root = dotnetRoot
+  };
+  
+  int r = hostfxr::initialize_for_runtime_config(runtimeConfigPath, &params, &global_hostfxr);
   if (r) {
     return static_cast<StatusCode>(r);
   }
@@ -110,3 +177,8 @@ clr::StatusCode clr::load(const uchar_t *assemblyPath) {
   int r = load_assembly(assemblyPath, nullptr, nullptr);
   return static_cast<StatusCode>(r);
 }
+
+
+#ifndef MANAGED_CALL
+#define MANAGED_CALL __attribute__((__cdecl__))
+#endif
