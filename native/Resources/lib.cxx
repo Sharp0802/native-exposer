@@ -80,7 +80,7 @@ namespace clr {
 
     const auto it = map.find(code);
     if (it == map.end()) {
-      return "Unknown error";
+      return "Unknown error; May be HRESULT code";
     }
 
     return it->second;
@@ -138,7 +138,7 @@ static ustring base_path(const ustring& path)
 #endif
 }
 
-static void assert_status_code(clr::StatusCode code)
+void clr::assert_status_code(StatusCode code)
 {
   if (code == 0)
     return;
