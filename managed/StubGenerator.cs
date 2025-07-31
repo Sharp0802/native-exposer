@@ -21,7 +21,7 @@ public class StubGenerator : IIncrementalGenerator
                   using System;
 
                   namespace {{Namespace}} {
-                      [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = false)]
+                      [AttributeUsage(AttributeTargets.Method | AttributeTargets.Constructor, AllowMultiple = false, Inherited = false)]
                       internal sealed class {{AttributeName}} : Attribute {}
                       
                       public static class Internal {
@@ -45,7 +45,7 @@ public class StubGenerator : IIncrementalGenerator
 
     private static void WriteParameters(IMethodSymbol symbol, StringBuilder builder)
     {
-        if (!symbol.IsStatic)
+        if (!symbol.IsStatic && !symbol.IsCtor())
         {
             builder.Append("global::System.IntPtr __pThis");
             if (symbol.Parameters.Length > 0)
@@ -110,8 +110,9 @@ public class StubGenerator : IIncrementalGenerator
         builder.Append(
             "\t[global::System.Runtime.InteropServices.UnmanagedCallersOnly(CallConvs = new[] { typeof(global::System.Runtime.CompilerServices.CallConvCdecl) })]\n");
 
+        var ret = (symbol.IsCtor() ? symbol.ContainingType : symbol.ReturnType).ToBridgeType();
         builder
-            .Append("\tpublic static ").Append(symbol.ReturnType.ToBridgeType())
+            .Append("\tpublic static ").Append(ret)
             .Append(' ').Append(mangle)
             .Append('(');
 
@@ -121,22 +122,22 @@ public class StubGenerator : IIncrementalGenerator
 
         // stub body
 
-        if (!symbol.IsStatic)
+        if (!symbol.IsStatic && !symbol.IsCtor())
         {
             builder.Append("\t\tvar __this = global::System.Runtime.InteropServices.GCHandle.FromIntPtr(__pThis);\n");
         }
 
         builder.Append("\t\t");
-        if (!symbol.ReturnsVoid)
+        if (!symbol.ReturnsVoid || symbol.IsCtor())
             builder.Append("return ");
 
-        if (symbol.ReturnType.IsReferenceType)
+        if (symbol.ReturnType.IsReferenceType || symbol.IsCtor())
         {
             builder.Append("global::System.Runtime.InteropServices.GCHandle.ToIntPtr(");
             builder.Append("global::System.Runtime.InteropServices.GCHandle.Alloc(");
         }
 
-        if (!symbol.IsStatic)
+        if (!symbol.IsStatic && !symbol.IsCtor())
         {
             builder
                 .Append("(__this.Target as global::")
@@ -144,11 +145,16 @@ public class StubGenerator : IIncrementalGenerator
                 .Append(").");
         }
 
-        builder.Append(symbol.Name).Append('(');
+        if (symbol.IsCtor())
+            builder.Append("new ").Append(symbol.ContainingType.Name);
+        else
+            builder.Append(symbol.Name);
+
+        builder.Append('(');
 
         WriteArguments(symbol, builder);
 
-        if (symbol.ReturnType.IsReferenceType)
+        if (symbol.ReturnType.IsReferenceType || symbol.IsCtor())
             builder.Append("))");
 
         builder
@@ -160,6 +166,6 @@ public class StubGenerator : IIncrementalGenerator
         builder.Append("}\n");
 
         var src = SourceText.From(builder.ToString(), Encoding.UTF8);
-        spc.AddSource($"{symbol.ContainingType.Name}.{symbol.Name}.g.cs", src);
+        spc.AddSource($"{symbol.ContainingType.Name}.{mangle}.g.cs", src);
     }
 }

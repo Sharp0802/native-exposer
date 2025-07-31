@@ -23,6 +23,12 @@ public static class SymbolExtension
             .GetAttributes()
             .Any(attr => attr.AttributeClass?.GetFullName(".") == "NativeExposer.ExportAttribute");
     }
+
+    public static bool IsCtor(this IMethodSymbol method)
+    {
+        var vCtor = method.ContainingType.InstanceConstructors;
+        return vCtor.Contains(method, SymbolEqualityComparer.Default);
+    }
     
     public static string GetFullName(this ISymbol symbol, string delimiter)
     {
@@ -73,7 +79,9 @@ public static class SymbolExtension
     public static string Mangle(this IMethodSymbol symbol)
     {
         var builder = new StringBuilder();
-        builder.Append("_N").Append(symbol.Name).Append("E");
+
+        var name = symbol.IsCtor() ? symbol.ContainingType.Name : symbol.Name;
+        builder.Append("_N").Append(name).Append("E");
 
         if (!symbol.IsStatic) 
             builder.Append('t');
@@ -86,8 +94,16 @@ public static class SymbolExtension
 
     public static string ToNativeType(this ITypeSymbol type)
     {
+        if (type is IPointerTypeSymbol pointer)
+        {
+            // it's safe: reference type cannot be pointee
+            return pointer.PointedAtType.ToNativeType() + '*';
+        }
+        
         return type.GetFullName(".") switch
         {
+            "System.Void" => "void",
+            
             "System.SByte" => "::std::int8_t",
             "System.Int16" => "::std::int16_t",
             "System.Int32" => "::std::int32_t",
@@ -101,17 +117,29 @@ public static class SymbolExtension
             "System.Half"   => "::std::float16_t",
             "System.Single" => "::std::float32_t",
             "System.Double" => "::std::float64_t",
+            
+            "System.IntPtr" => "::std::intptr_t",
+            "System.UIntPtr" => "::std::uintptr_t",
 
             _ => "::" + type.GetFullName("::")
         };
+    }
+
+    public static string ToNativeBridgeType(this ITypeSymbol type)
+    {
+        return type.IsReferenceType ? "::std::intptr_t" : type.ToNativeType();
     }
 
     public static string ToBridgeType(this ITypeSymbol type)
     {
         if (type.IsReferenceType)
             return "global::System.IntPtr";
+
+        var name = type.GetFullName(".");
+        if (name == "System.Void")
+            return "void";
         
-        return "global::" + type.GetFullName(".");
+        return "global::" + name;
     }
 
     private static bool IsRootNamespace(ISymbol symbol) 
